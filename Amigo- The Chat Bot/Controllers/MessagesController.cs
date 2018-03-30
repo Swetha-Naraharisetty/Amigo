@@ -1,9 +1,13 @@
-﻿using System.Net;
+﻿using System;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web.Http;
-using Microsoft.Bot.Builder.Dialogs;
+using System.Web.Http.Description;
 using Microsoft.Bot.Connector;
+using Newtonsoft.Json;
+using Microsoft.Bot.Builder.Dialogs;
 
 namespace Amigo__The_Chat_Bot
 {
@@ -16,19 +20,33 @@ namespace Amigo__The_Chat_Bot
         /// </summary>
         public async Task<HttpResponseMessage> Post([FromBody]Activity activity)
         {
-            if (activity.Type == ActivityTypes.Message)
+            ConnectorClient connector = new ConnectorClient(new Uri(activity.ServiceUrl));
+            if (activity.Type == ActivityTypes.Message) 
             {
-                await Conversation.SendAsync(activity, () => new Dialogs.RootDialog());
+               
+                if (activity.Attachments == null || activity.Attachments.Count == 0)
+                {
+                    await Conversation.SendAsync(activity, () => new Amigo_Luis());
+
+                }
+                else
+                {
+                    string imageUrl = activity.Attachments[0].ContentUrl;
+                    string mess = await FaceDetectionAPI.FaceAPI.UploadAndDetectFaces(imageUrl);
+                    Activity reply = activity.CreateReply(mess);
+                    activity.Text = mess;
+                    await Conversation.SendAsync(activity, () => new Amigo_Luis());
+                 }
             }
             else
             {
-                HandleSystemMessage(activity);
+                await HandleSystemMessage(activity);
             }
             var response = Request.CreateResponse(HttpStatusCode.OK);
             return response;
         }
 
-        private Activity HandleSystemMessage(Activity message)
+        private async Task HandleSystemMessage(Activity message)
         {
             if (message.Type == ActivityTypes.DeleteUserData)
             {
@@ -37,9 +55,17 @@ namespace Amigo__The_Chat_Bot
             }
             else if (message.Type == ActivityTypes.ConversationUpdate)
             {
-                // Handle conversation state changes, like members being added and removed
-                // Use Activity.MembersAdded and Activity.MembersRemoved and Activity.Action for info
-                // Not available in all channels
+                
+                if (message.MembersAdded.Any(o => o.Id == message.Recipient.Id))
+                {
+                    //Welcome Message to the User
+                    ConnectorClient client = new ConnectorClient(new Uri(message.ServiceUrl));
+                    // bot replies first
+                    Activity reply = message.CreateReply();
+                    reply.Text = "Hai   \U0001F44B" + Environment.NewLine + Environment.NewLine + "I am Amigo  \U0001F64B" + Environment.NewLine + Environment.NewLine + "Your new pal   \U0001F471 ";
+                    await client.Conversations.ReplyToActivityAsync(reply);
+                  
+                }
             }
             else if (message.Type == ActivityTypes.ContactRelationUpdate)
             {
@@ -54,7 +80,7 @@ namespace Amigo__The_Chat_Bot
             {
             }
 
-            return null;
+            
         }
     }
 }
